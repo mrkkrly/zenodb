@@ -12,7 +12,7 @@ pub struct SocketMessage {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Response {
+pub struct Data {
     pub identifier: String,
     pub data: String,
     pub public_key: String,
@@ -21,8 +21,8 @@ pub struct Response {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct FinalResponse {
-    pub data: Option<Response>,
+pub struct Response {
+    pub data: Option<Data>,
     pub error: Option<String>
 }
 

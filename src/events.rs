@@ -1,7 +1,5 @@
-use std::str::FromStr;
-
-use crate::models::{FinalResponse, Response, SocketMessage};
-use crate::utils::{get_timestamp, verify};
+use crate::models::{Data, Response, SocketMessage};
+use crate::utils::{format_log, get_timestamp, verify};
 
 use futures_util::{stream::SplitSink, SinkExt};
 use sled::Db;
@@ -14,7 +12,7 @@ pub async fn get(
     write: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
     message: &SocketMessage,
 ) {
-    let mut response = FinalResponse {
+    let mut response = Response {
         data: None,
         error: None,
     };
@@ -22,41 +20,47 @@ pub async fn get(
         Some(key) => match db.get(key) {
             Ok(Some(data)) => match String::from_utf8(data.to_vec()) {
                 Ok(json_string) => {
-                    tracing::info!("GET - {}", key);
+                    let log = format_log("GET", key);
+                    tracing::info!(log);
 
-                    match serde_json::from_str::<Response>(&json_string) {
+                    match serde_json::from_str::<Data>(&json_string) {
                         Ok(json) => {
                             response.data = Some(json);
                         }
                         Err(e) => {
-                            response.error = Some(format!("{}", e.to_string()));
+                            response.error = Some(e.to_string());
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::error!("GET - Failed to serialize response: {}", e);
-                    response.error = Some(format!("{}", e.to_string()));
+                    let log = format_log("GET", &e.to_string());
+                    tracing::error!(log);
+                    response.error = Some(e.to_string());
                 }
             },
             Ok(None) => {
-                tracing::warn!("GET - No data found for key: {}", key);
-                response.error = Some(format!("No data found for key: {}", key));
+                let log = format_log("GET", &key.to_string());
+                tracing::warn!(log);
+                response.error = Some("404".to_string());
             }
             Err(e) => {
-                tracing::error!("GET - Database Error: {}", e);
-                response.error = Some(format!("Database Error: {}", e));
+                let log = format_log("GET", &e.to_string());
+                tracing::error!(log);
+                response.error = Some(e.to_string());
             }
         },
         None => {
-            tracing::warn!("GET - Missing identifier in message");
-            response.error = Some(format!("Missing identifier in message"));
+            let log = format_log("GET", "Missing identifier in message");
+            tracing::warn!(log);
+            response.error = Some("Missing identifier in message".to_string());
         }
     }
 
     let respsonse_message = Message::Text(serde_json::to_string(&response).expect("ERROR").into());
 
     if let Err(e) = write.send(respsonse_message).await {
-        tracing::error!("GET - Failed to send response: {}", e);
+        let log = format_log("GET", &e.to_string());
+        tracing::error!(log);
     }
 }
 
@@ -65,7 +69,7 @@ pub async fn put(
     write: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
     message: &SocketMessage,
 ) {
-    let mut response = FinalResponse {
+    let mut response = Response {
         data: None,
         error: None,
     };
@@ -89,7 +93,7 @@ pub async fn put(
                 let identifier = format!("{}-{}", prefix, hash);
                 let timestamp = get_timestamp();
 
-                let data = Response {
+                let data = Data {
                     identifier: identifier.clone(),
                     data: data.to_string(),
                     signature: signature_bs58,
@@ -100,34 +104,44 @@ pub async fn put(
                 match serde_json::to_string(&response) {
                     Ok(json) => match db.insert(identifier.clone(), json.as_bytes()) {
                         Ok(_) => {
-                            tracing::info!("PUT - {}", identifier);
+                            let log = format_log("PUT", &identifier);
+                            tracing::info!(log);
+
                             response.data = Some(data);
                         }
                         Err(e) => {
-                            tracing::error!("PUT - Failed to store data: {}", e);
-                            response.error = Some(format!("Failed to store data: {}", e));
+                            let log = format_log("PUT", &e.to_string());
+                            tracing::error!(log);
+
+                            response.error = Some(e.to_string());
                         }
                     },
                     Err(e) => {
-                        tracing::error!("PUT - Failed to serialize data: {}", e);
-                        response.error = Some(format!("Failed to serialize data: {}", e));
+                        let log = format_log("PUT", &e.to_string());
+                        tracing::error!(log);
+
+                        response.error = Some(e.to_string());
                     }
                 }
             } else {
-                tracing::error!("PUT - Failed to Verify Data!");
-                response.error = Some(format!("Failed to Verify Data!"));
+                let log = format_log("PUT", "Failed to verify data");
+                tracing::error!(log);
+
+                response.error = Some("Failed to verify data".to_string());
             }
         }
         _ => {
-            tracing::warn!("PUT - Missing identifier or data in message");
-            response.error = Some(format!("Missing identifier or data in message"));
+            let log = format_log("PUT", "Missing identifier or data in message");
+            tracing::warn!(log);
+            response.error = Some("Missing identifier or data in message".to_string());
         }
     }
 
     let respsonse_message = Message::Text(serde_json::to_string(&response).expect("ERROR").into());
 
     if let Err(e) = write.send(respsonse_message).await {
-        tracing::error!("GET - Failed to send response: {}", e);
+        let log = format_log("PUT", &e.to_string());
+        tracing::error!(log);
     }
 }
 

@@ -27,3 +27,7 @@ pub fn verify(public_key: &str, message: &[u8], signatrue: &str) -> bool {
         }
     }
 }
+
+pub fn format_log(option: &str, message: &str) -> String {
+    format!("{} - {}", option, message).to_string()
+}
